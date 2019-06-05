@@ -41,8 +41,8 @@ def root():
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        #cur.execute('SELECT categoryId, name FROM categories')
-        #category_data = cur.fetchall()
+        cur.execute('SELECT categoryId, name FROM categories')
+        category_data = cur.fetchall()
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
