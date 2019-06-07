@@ -153,6 +153,7 @@ def login_form():
     else:
         return render_template('login.html', error='')
 
+# 
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
     if request.method == 'POST':
