@@ -34,15 +34,15 @@ def root():
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
         # Show last product added
-        cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 3 ')
+        cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')
         # Show all items
         #cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')
         item_data = cur.fetchall()
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        cur.execute('SELECT categoryId, name FROM categories')
-        category_data = cur.fetchall()
+        #cur.execute('SELECT categoryId, name FROM categories')
+        #category_data = cur.fetchall()
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
@@ -148,10 +148,10 @@ def update_profile():
 @app.route("/loginForm")
 def login_form():
     # Uncomment to enable logging in and registration
-    if 'email' in session:
+    #if 'email' in session:
         return redirect(url_for('root'))
-    else:
-        return render_template('login.html', error='')
+    #else:
+    #    return render_template('login.html', error='')
 
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
@@ -272,14 +272,14 @@ def payment():
     cur.execute("DELETE FROM kart WHERE userId = " + str(user_id))
     conn.commit()
 
-        
+
 
     return render_template("checkout.html", products = products, totalPrice=total_price, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)
 
 @app.route("/register", methods = ['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        #Parse form data    
+        #Parse form data
         password = request.form['password']
         email = request.form['email']
         first_name = request.form['firstName']
