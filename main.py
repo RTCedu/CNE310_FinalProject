@@ -36,13 +36,13 @@ def root():
         # Show last product added
         #cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')
         # Show all items
-        cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 3')
+        cur.execute('SELECT productId, name, price, description, image, stock FROM products')
         item_data = cur.fetchall()
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        #cur.execute('SELECT categoryId, name FROM categories')
-        #category_data = cur.fetchall()
+        cur.execute('SELECT categoryId, name FROM categories')
+        category_data = cur.fetchall()
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
@@ -55,20 +55,47 @@ def admin():
     conn.close()
     return render_template('add.html', categories=categories)
 
-@app.route("/displayCategory")
-def displayCategory():
-    logged_in, first_name, no_of_items = get_login_details()
-    category_id = request.args.get("categoryId")
-    with sqlite3.connect('database.db') as conn:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT products.productId, products.name, products.price, products.image, categories.name FROM products, categories WHERE products.categoryId = categories.categoryId AND categories.categoryId = " + category_id)
-        data = cur.fetchall()
-    conn.close()
-    category_name = data[0][4]
-    data = parse(data)
-    return render_template('displayCategory.html', data=data, loggedIn=logged_in, firstName=first_name,
-                           noOfItems=no_of_items, categoryName=category_name)
+@app.route("/addItem", methods=["GET", "POST"])
+def addItem():
+    if request.method == "POST":
+        name = request.form['name']
+        price = float(request.form['price'])
+        description = request.form['description']
+        stock = int(request.form['stock'])
+        categoryId = int(request.form['category'])
+
+         #Upload image
+        image = request.files['image']
+        if image and allowed_file(image.filename):
+            filename = secure_filename(image.filename)
+            image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        imagename = filename
+        with sqlite3.connect('database.db') as conn:
+            try:
+                cur = conn.cursor()
+                cur.execute('''INSERT INTO products (name, price, description, image, stock, categoryId) VALUES (?, ?, ?, ?, ?, ?)''', (name, price, description, imagename, stock, categoryId))
+                conn.commit()
+                msg="Added successfully"
+            except:
+                msg="Error occured"
+                conn.rollback()
+        conn.close()
+        print(msg)
+        return redirect(url_for('root'))
+    @app.route("/displayCategory")
+    def displayCategory():
+        logged_in, first_name, no_of_items = get_login_details()
+        category_id = request.args.get("categoryId")
+        with sqlite3.connect('database.db') as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT products.productId, products.name, products.price, products.image, categories.name FROM products, categories WHERE products.categoryId = categories.categoryId AND categories.categoryId = " + category_id)
+            data = cur.fetchall()
+        conn.close()
+        category_name = data[0][4]
+        data = parse(data)
+        return render_template('displayCategory.html', data=data, loggedIn=logged_in, firstName=first_name,
+                               noOfItems=no_of_items, categoryName=category_name)
 
 
 @app.route("/account/profile")
@@ -148,12 +175,12 @@ def update_profile():
 @app.route("/loginForm")
 def login_form():
     # Uncomment to enable logging in and registration
-    #if 'email' in session:
-
+    if 'email' in session:
         return redirect(url_for('root'))
-    #else:
-    #    return render_template('login.html', error='')
+    else:
+        return render_template('login.html', error='')
 
+#
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
     if request.method == 'POST':
@@ -273,14 +300,14 @@ def payment():
     cur.execute("DELETE FROM kart WHERE userId = " + str(user_id))
     conn.commit()
 
-        
+
 
     return render_template("checkout.html", products = products, totalPrice=total_price, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)
 
 @app.route("/register", methods = ['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        #Parse form data    
+        #Parse form data
         password = request.form['password']
         email = request.form['email']
         first_name = request.form['firstName']
