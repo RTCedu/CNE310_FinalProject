@@ -1,6 +1,7 @@
+#the code working perfect
 # This creates a basic eCommerce website using Flask and SQLite
 # Zachary Rubin, zrubin@rtc.edu
-# CNA 340 Spring 2019
+# CNA 340 Spring 2020
 
 from flask import *
 import sqlite3, hashlib, os
