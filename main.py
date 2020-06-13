@@ -1,4 +1,5 @@
-#the code working perfect
+# The code working perfect
+# The code working perfect
 # This creates a basic eCommerce website using Flask and SQLite
 # Zachary Rubin, zrubin@rtc.edu
 # CNA 340 Spring 2020
