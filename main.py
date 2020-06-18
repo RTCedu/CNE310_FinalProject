@@ -21,9 +21,9 @@ def get_login_details():
             no_of_items = 0
         else:
             logged_in = True
-            cur.execute("SELECT user_id, first_name FROM users WHERE email = '" + session['email'] + "'")
+            cur.execute("SELECT userId, firstName FROM users WHERE email = '" + session['email'] + "'")
             user_id, first_name = cur.fetchone()
-            cur.execute("SELECT count(productId) FROM kart WHERE user_id = " + str(user_id))
+            cur.execute("SELECT count(productId) FROM kart WHERE userId = " + str(user_id))
             no_of_items = cur.fetchone()[0]
     conn.close()
     return (logged_in, first_name, no_of_items)
@@ -36,7 +36,7 @@ def root():
         # Show last product added
         cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')
         # Show all items
-        #cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')
+        cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')
         item_data = cur.fetchall()
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
