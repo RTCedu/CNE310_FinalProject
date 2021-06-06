@@ -1,0 +1,4 @@
+def test_function(addition)
+	if 7>9 then 10
+		else 11
+	return addition
