@@ -176,10 +176,10 @@ def update_profile():
 @app.route("/loginForm")
 def login_form():
     # Uncomment to enable logging in and registration
-    #if 'email' in session:
+    if 'email' in session:
         return redirect(url_for('root'))
-    #else:
-    #    return render_template('login.html', error='')
+    else:
+        return render_template('login.html', error='')
 
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
@@ -357,3 +357,4 @@ def parse(data):
 
 if __name__ == '__main__':
     app.run(debug=True)
+

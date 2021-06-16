@@ -1,0 +1,644 @@
+Index: main.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+># This creates a basic eCommerce website using Flask and SQLite\r\n# Zachary Rubin, zrubin@rtc.edu\r\n# CNA 340 Spring 2019\r\n\r\nfrom flask import *\r\nimport sqlite3, hashlib, os\r\nfrom werkzeug.utils import secure_filename\r\n\r\napp = Flask(__name__)\r\napp.secret_key = 'cna340'\r\nUPLOAD_FOLDER = 'static/uploads'\r\nALLOWED_EXTENSIONS = set(['jpeg', 'jpg', 'png', 'gif'])\r\napp.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER\r\n\r\ndef get_login_details():\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        if 'email' not in session:\r\n            logged_in = False\r\n            first_name = ''\r\n            no_of_items = 0\r\n        else:\r\n            logged_in = True\r\n            cur.execute(\"SELECT user_id, first_name FROM users WHERE email = '\" + session['email'] + \"'\")\r\n            user_id, first_name = cur.fetchone()\r\n            cur.execute(\"SELECT count(productId) FROM kart WHERE user_id = \" + str(user_id))\r\n            no_of_items = cur.fetchone()[0]\r\n    conn.close()\r\n    return (logged_in, first_name, no_of_items)\r\n\r\n@app.route(\"/\")\r\ndef root():\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        # Show last product added\r\n        cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')\r\n        # Show all items\r\n        #cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')\r\n        item_data = cur.fetchall()\r\n        # Show an error instead of the categories\r\n        category_data = [(-1,\"Error\")]\r\n        # Show all categories\r\n        #cur.execute('SELECT categoryId, name FROM categories')\r\n        #category_data = cur.fetchall()\r\n    item_data = parse(item_data)\r\n    return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)\r\n\r\n@app.route(\"/add\")\r\ndef admin():\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\"SELECT categoryId, name FROM categories\")\r\n        categories = cur.fetchall()\r\n    conn.close()\r\n    return render_template('add.html', categories=categories)\r\n\r\n@app.route(\"/addItem\", methods=[\"GET\", \"POST\"])\r\ndef addItem():\r\n    if request.method == \"POST\":\r\n        name = request.form['name']\r\n        price = float(request.form['price'])\r\n        description = request.form['description']\r\n        stock = int(request.form['stock'])\r\n        categoryId = int(request.form['category'])\r\n\r\n        #Upload image\r\n        image = request.files['image']\r\n        if image and allowed_file(image.filename):\r\n            filename = secure_filename(image.filename)\r\n            image.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))\r\n        imagename = filename\r\n        with sqlite3.connect('database.db') as conn:\r\n            try:\r\n                cur = conn.cursor()\r\n                cur.execute('''INSERT INTO products (name, price, description, image, stock, categoryId) VALUES (?, ?, ?, ?, ?, ?)''', (name, price, description, imagename, stock, categoryId))\r\n                conn.commit()\r\n                msg=\"Added successfully\"\r\n            except:\r\n                msg=\"Error occured\"\r\n                conn.rollback()\r\n        conn.close()\r\n        print(msg)\r\n        return redirect(url_for('root'))\r\n\r\n@app.route(\"/displayCategory\")\r\ndef displayCategory():\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    category_id = request.args.get(\"categoryId\")\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\r\n            \"SELECT products.productId, products.name, products.price, products.image, categories.name FROM products, categories WHERE products.categoryId = categories.categoryId AND categories.categoryId = \" + category_id)\r\n        data = cur.fetchall()\r\n    conn.close()\r\n    category_name = data[0][4]\r\n    data = parse(data)\r\n    return render_template('displayCategory.html', data=data, loggedIn=logged_in, firstName=first_name,\r\n                           noOfItems=no_of_items, categoryName=category_name)\r\n\r\n\r\n@app.route(\"/account/profile\")\r\ndef profile_home():\r\n    if 'email' not in session:\r\n        return redirect(url_for('root'))\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    return render_template(\"profileHome.html\", loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)\r\n\r\n@app.route(\"/account/profile/edit\")\r\ndef edit_profile():\r\n    if 'email' not in session:\r\n        return redirect(url_for('root'))\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\"SELECT userId, email, first_name, lastName, address1, address2, zipcode, city, state, country, phone FROM users WHERE email = '\" + session['email'] + \"'\")\r\n        profile_data = cur.fetchone()\r\n    conn.close()\r\n    return render_template(\"editProfile.html\", profileData=profile_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)\r\n\r\n@app.route(\"/account/profile/changePassword\", methods=[\"GET\", \"POST\"])\r\ndef change_password():\r\n    if 'email' not in session:\r\n        return redirect(url_for('login_form'))\r\n    if request.method == \"POST\":\r\n        old_password = request.form['oldpassword']\r\n        old_password = hashlib.md5(old_password.encode()).hexdigest()\r\n        new_password = request.form['newpassword']\r\n        new_password = hashlib.md5(new_password.encode()).hexdigest()\r\n        with sqlite3.connect('database.db') as conn:\r\n            cur = conn.cursor()\r\n            cur.execute(\"SELECT userId, password FROM users WHERE email = '\" + session['email'] + \"'\")\r\n            user_id, password = cur.fetchone()\r\n            if (password == old_password):\r\n                try:\r\n                    cur.execute(\"UPDATE users SET password = ? WHERE userId = ?\", (new_password, user_id))\r\n                    conn.commit()\r\n                    msg=\"Changed successfully\"\r\n                except:\r\n                    conn.rollback()\r\n                    msg = \"Failed\"\r\n                return render_template(\"changePassword.html\", msg=msg)\r\n            else:\r\n                msg = \"Wrong password\"\r\n        conn.close()\r\n        return render_template(\"changePassword.html\", msg=msg)\r\n    else:\r\n        return render_template(\"changePassword.html\")\r\n\r\n@app.route(\"/updateProfile\", methods=[\"GET\", \"POST\"])\r\ndef update_profile():\r\n    if request.method == 'POST':\r\n        email = request.form['email']\r\n        first_name = request.form['firstName']\r\n        last_name = request.form['lastName']\r\n        address1 = request.form['address1']\r\n        address2 = request.form['address2']\r\n        zipcode = request.form['zipcode']\r\n        city = request.form['city']\r\n        state = request.form['state']\r\n        country = request.form['country']\r\n        phone = request.form['phone']\r\n        with sqlite3.connect('database.db') as con:\r\n                try:\r\n                    cur = con.cursor()\r\n                    cur.execute('UPDATE users SET firstName = ?, lastName = ?, address1 = ?, address2 = ?, zipcode = ?, city = ?, state = ?, country = ?, phone = ? WHERE email = ?', (first_name, last_name, address1, address2, zipcode, city, state, country, phone, email))\r\n\r\n                    con.commit()\r\n                    msg = \"Saved Successfully\"\r\n                except:\r\n                    con.rollback()\r\n                    msg = \"Error occured\"\r\n        con.close()\r\n        return redirect(url_for('edit_profile'))\r\n\r\n@app.route(\"/loginForm\")\r\ndef login_form():\r\n    # Uncomment to enable logging in and registration\r\n    #if 'email' in session:\r\n        return redirect(url_for('root'))\r\n    #else:\r\n    #    return render_template('login.html', error='')\r\n\r\n@app.route(\"/login\", methods = ['POST', 'GET'])\r\ndef login():\r\n    if request.method == 'POST':\r\n        email = request.form['email']\r\n        password = request.form['password']\r\n        if is_valid(email, password):\r\n            session['email'] = email\r\n            return redirect(url_for('root'))\r\n        else:\r\n            error = 'Invalid UserId / Password'\r\n            return render_template('login.html', error=error)\r\n\r\n@app.route(\"/productDescription\")\r\ndef product_description():\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    product_id = request.args.get('productId')\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\r\n            'SELECT productId, name, price, description, image, stock FROM products WHERE productId = ' + product_id)\r\n        productData = cur.fetchone()\r\n    conn.close()\r\n    return render_template(\"productDescription.html\", data=productData, loggedIn=logged_in, firstName=first_name,\r\n                           noOfItems=no_of_items)\r\n\r\n@app.route(\"/addToCart\")\r\ndef add_to_cart():\r\n    if 'email' not in session:\r\n        return redirect(url_for('login_form'))\r\n    else:\r\n        product_id = int(request.args.get('productId'))\r\n        with sqlite3.connect('database.db') as conn:\r\n            cur = conn.cursor()\r\n            cur.execute(\"SELECT userId FROM users WHERE email = '\" + session['email'] + \"'\")\r\n            user_id = cur.fetchone()[0]\r\n            try:\r\n                cur.execute(\"INSERT INTO kart (userId, productId) VALUES (?, ?)\", (user_id, product_id))\r\n                conn.commit()\r\n                msg = \"Added successfully\"\r\n            except:\r\n                conn.rollback()\r\n                msg = \"Error occured\"\r\n        conn.close()\r\n        return redirect(url_for('root'))\r\n\r\n@app.route(\"/cart\")\r\ndef cart():\r\n    if 'email' not in session:\r\n        return redirect(url_for('login_form'))\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    email = session['email']\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\"SELECT userId FROM users WHERE email = '\" + email + \"'\")\r\n        user_id = cur.fetchone()[0]\r\n        cur.execute(\"SELECT products.productId, products.name, products.price, products.image FROM products, kart WHERE products.productId = kart.productId AND kart.userId = \" + str(user_id))\r\n        products = cur.fetchall()\r\n    total_price = 0\r\n    for row in products:\r\n        total_price += row[2]\r\n    return render_template(\"cart.html\", products = products, totalPrice=total_price, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)\r\n\r\n@app.route(\"/removeFromCart\")\r\ndef remove_from_cart():\r\n    if 'email' not in session:\r\n        return redirect(url_for('login_form'))\r\n    email = session['email']\r\n    product_id = int(request.args.get('productId'))\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\"SELECT user_id FROM users WHERE email = '\" + email + \"'\")\r\n        user_id = cur.fetchone()[0]\r\n        try:\r\n            cur.execute(\"DELETE FROM kart WHERE user_id = \" + str(user_id) + \" AND productId = \" + str(product_id))\r\n            conn.commit()\r\n            msg = \"removed successfully\"\r\n        except:\r\n            conn.rollback()\r\n            msg = \"error occured\"\r\n    conn.close()\r\n    return redirect(url_for('root'))\r\n\r\n@app.route(\"/logout\")\r\ndef logout():\r\n    session.pop('email', None)\r\n    return redirect(url_for('root'))\r\n\r\ndef is_valid(email, password):\r\n    con = sqlite3.connect('database.db')\r\n    cur = con.cursor()\r\n    cur.execute('SELECT email, password FROM users')\r\n    data = cur.fetchall()\r\n    for row in data:\r\n        if row[0] == email and row[1] == hashlib.md5(password.encode()).hexdigest():\r\n            return True\r\n    return False\r\n\r\n\r\n@app.route(\"/checkout\", methods=['GET','POST'])\r\ndef payment():\r\n    if 'email' not in session:\r\n        return redirect(url_for('login_form'))\r\n    logged_in, first_name, no_of_items = get_login_details()\r\n    email = session['email']\r\n\r\n    with sqlite3.connect('database.db') as conn:\r\n        cur = conn.cursor()\r\n        cur.execute(\"SELECT userId FROM users WHERE email = '\" + email + \"'\")\r\n        user_id = cur.fetchone()[0]\r\n        cur.execute(\"SELECT products.productId, products.name, products.price, products.image FROM products, kart WHERE products.productId = kart.productId AND kart.userId = \" + str(user_id))\r\n        products = cur.fetchall()\r\n    total_price = 0\r\n    for row in products:\r\n        total_price += row[2]\r\n        print(row)\r\n        cur.execute(\"INSERT INTO Orders (userId, productId) VALUES (?, ?)\", (user_id, row[0]))\r\n    cur.execute(\"DELETE FROM kart WHERE userId = \" + str(user_id))\r\n    conn.commit()\r\n\r\n        \r\n\r\n    return render_template(\"checkout.html\", products = products, totalPrice=total_price, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)\r\n\r\n@app.route(\"/register\", methods = ['GET', 'POST'])\r\ndef register():\r\n    if request.method == 'POST':\r\n        #Parse form data    \r\n        password = request.form['password']\r\n        email = request.form['email']\r\n        first_name = request.form['firstName']\r\n        last_name = request.form['lastName']\r\n        address1 = request.form['address1']\r\n        address2 = request.form['address2']\r\n        zipcode = request.form['zipcode']\r\n        city = request.form['city']\r\n        state = request.form['state']\r\n        country = request.form['country']\r\n        phone = request.form['phone']\r\n\r\n        with sqlite3.connect('database.db') as con:\r\n            try:\r\n                cur = con.cursor()\r\n                cur.execute('INSERT INTO users (password, email, firstName, lastName, address1, address2, zipcode, city, state, country, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (hashlib.md5(password.encode()).hexdigest(), email, first_name, last_name, address1, address2, zipcode, city, state, country, phone))\r\n\r\n                con.commit()\r\n\r\n                msg = \"Registered Successfully\"\r\n            except:\r\n                con.rollback()\r\n                msg = \"Error occured\"\r\n        con.close()\r\n        return render_template(\"login.html\", error=msg)\r\n\r\n@app.route(\"/registrationForm\")\r\ndef registration_form():\r\n    return render_template(\"register.html\")\r\n\r\ndef allowed_file(filename):\r\n    return '.' in filename and \\\r\n            filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS\r\n\r\ndef parse(data):\r\n    ans = []\r\n    i = 0\r\n    while i < len(data):\r\n        curr = []\r\n        for j in range(7):\r\n            if i >= len(data):\r\n                break\r\n            curr.append(data[i])\r\n            i += 1\r\n        ans.append(curr)\r\n    return ans\r\n\r\nif __name__ == '__main__':\r\n    app.run(debug=True)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/main.py b/main.py
+--- a/main.py	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ b/main.py	(date 1623638514950)
+@@ -176,10 +176,10 @@
+ @app.route("/loginForm")
+ def login_form():
+     # Uncomment to enable logging in and registration
+-    #if 'email' in session:
++    if 'email' in session:
+         return redirect(url_for('root'))
+-    #else:
+-    #    return render_template('login.html', error='')
++    else:
++        return render_template('login.html', error='')
+ 
+ @app.route("/login", methods = ['POST', 'GET'])
+ def login():
+Index: .idea/shoppingcart.iml
+===================================================================
+diff --git a/.idea/shoppingcart.iml b/.idea/shoppingcart.iml
+deleted file mode 100644
+--- a/.idea/shoppingcart.iml	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ /dev/null	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
+@@ -1,11 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<module type="PYTHON_MODULE" version="4">
+-  <component name="NewModuleRootManager">
+-    <content url="file://$MODULE_DIR$" />
+-    <orderEntry type="inheritedJdk" />
+-    <orderEntry type="sourceFolder" forTests="false" />
+-  </component>
+-  <component name="TestRunnerService">
+-    <option name="PROJECT_TEST_RUNNER" value="Unittests" />
+-  </component>
+-</module>
+\ No newline at end of file
+Index: .idea/CNA340_FinalProject.iml
+===================================================================
+diff --git a/.idea/CNA340_FinalProject.iml b/.idea/CNA340_FinalProject.iml
+deleted file mode 100644
+--- a/.idea/CNA340_FinalProject.iml	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ /dev/null	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
+@@ -1,13 +0,0 @@
+-<?xml version="1.0" encoding="UTF-8"?>
+-<module type="PYTHON_MODULE" version="4">
+-  <component name="NewModuleRootManager">
+-    <content url="file://$MODULE_DIR$">
+-      <excludeFolder url="file://$MODULE_DIR$/venv" />
+-    </content>
+-    <orderEntry type="jdk" jdkName="Python 3.7 (CNA340_FinalProject)" jdkType="Python SDK" />
+-    <orderEntry type="sourceFolder" forTests="false" />
+-  </component>
+-  <component name="TestRunnerService">
+-    <option name="PROJECT_TEST_RUNNER" value="Unittests" />
+-  </component>
+-</module>
+\ No newline at end of file
+Index: .idea/CNE310_FinalProject.iml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/CNE310_FinalProject.iml b/.idea/CNE310_FinalProject.iml
+new file mode 100644
+--- /dev/null	(date 1623628053578)
++++ b/.idea/CNE310_FinalProject.iml	(date 1623628053578)
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<module type="PYTHON_MODULE" version="4">
++  <component name="NewModuleRootManager">
++    <content url="file://$MODULE_DIR$" />
++    <orderEntry type="inheritedJdk" />
++    <orderEntry type="sourceFolder" forTests="false" />
++  </component>
++</module>
+\ No newline at end of file
+Index: .idea/modules.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"ProjectModuleManager\">\r\n    <modules>\r\n      <module fileurl=\"file://$PROJECT_DIR$/.idea/CNA340_FinalProject.iml\" filepath=\"$PROJECT_DIR$/.idea/CNA340_FinalProject.iml\" />\r\n    </modules>\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/modules.xml b/.idea/modules.xml
+--- a/.idea/modules.xml	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ b/.idea/modules.xml	(date 1623628053605)
+@@ -2,7 +2,7 @@
+ <project version="4">
+   <component name="ProjectModuleManager">
+     <modules>
+-      <module fileurl="file://$PROJECT_DIR$/.idea/CNA340_FinalProject.iml" filepath="$PROJECT_DIR$/.idea/CNA340_FinalProject.iml" />
++      <module fileurl="file://$PROJECT_DIR$/.idea/CNE310_FinalProject.iml" filepath="$PROJECT_DIR$/.idea/CNE310_FinalProject.iml" />
+     </modules>
+   </component>
+ </project>
+\ No newline at end of file
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"ChangeListManager\">\r\n    <list default=\"true\" id=\"1c312c6c-ba2c-404d-8718-2e42ffe8499a\" name=\"Default\" comment=\"\">\r\n      <change beforePath=\"$PROJECT_DIR$/README.md\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/README.md\" afterDir=\"false\" />\r\n    </list>\r\n    <option name=\"EXCLUDED_CONVERTED_TO_IGNORED\" value=\"true\" />\r\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\r\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\r\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\r\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\r\n  </component>\r\n  <component name=\"DatabaseView\">\r\n    <option name=\"SHOW_INTERMEDIATE\" value=\"true\" />\r\n    <option name=\"GROUP_DATA_SOURCES\" value=\"true\" />\r\n    <option name=\"GROUP_SCHEMA\" value=\"true\" />\r\n    <option name=\"GROUP_CONTENTS\" value=\"false\" />\r\n    <option name=\"SORT_POSITIONED\" value=\"false\" />\r\n    <option name=\"SHOW_EMPTY_GROUPS\" value=\"false\" />\r\n    <option name=\"AUTO_SCROLL_FROM_SOURCE\" value=\"false\" />\r\n    <option name=\"HIDDEN_KINDS\">\r\n      <set />\r\n    </option>\r\n    <expand />\r\n    <select />\r\n  </component>\r\n  <component name=\"FileEditorManager\">\r\n    <leaf>\r\n      <file pinned=\"false\" current-in-tab=\"true\">\r\n        <entry file=\"file://$PROJECT_DIR$/main.py\">\r\n          <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n            <state relative-caret-position=\"362\">\r\n              <caret line=\"262\" column=\"49\" lean-forward=\"true\" selection-start-line=\"262\" selection-start-column=\"49\" selection-end-line=\"262\" selection-end-column=\"49\" />\r\n              <folding>\r\n                <element signature=\"e#0#19#0\" expanded=\"true\" />\r\n              </folding>\r\n            </state>\r\n          </provider>\r\n        </entry>\r\n      </file>\r\n      <file pinned=\"false\" current-in-tab=\"false\">\r\n        <entry file=\"file://$PROJECT_DIR$/templates/productDescription.html\">\r\n          <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n            <state relative-caret-position=\"262\">\r\n              <caret line=\"23\" column=\"16\" lean-forward=\"true\" selection-start-line=\"23\" selection-start-column=\"16\" selection-end-line=\"23\" selection-end-column=\"16\" />\r\n            </state>\r\n          </provider>\r\n        </entry>\r\n      </file>\r\n      <file pinned=\"false\" current-in-tab=\"false\">\r\n        <entry file=\"file://$PROJECT_DIR$/README.md\">\r\n          <provider selected=\"true\" editor-type-id=\"split-provider[text-editor;markdown-preview-editor]\">\r\n            <state split_layout=\"SPLIT\">\r\n              <first_editor relative-caret-position=\"272\">\r\n                <caret line=\"16\" column=\"9\" lean-forward=\"true\" selection-start-line=\"16\" selection-start-column=\"9\" selection-end-line=\"16\" selection-end-column=\"9\" />\r\n              </first_editor>\r\n              <second_editor />\r\n            </state>\r\n          </provider>\r\n        </entry>\r\n      </file>\r\n      <file pinned=\"false\" current-in-tab=\"false\">\r\n        <entry file=\"file://$PROJECT_DIR$/database.py\">\r\n          <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n            <state relative-caret-position=\"187\">\r\n              <caret line=\"25\" column=\"25\" lean-forward=\"true\" selection-start-line=\"25\" selection-start-column=\"25\" selection-end-line=\"25\" selection-end-column=\"25\" />\r\n            </state>\r\n          </provider>\r\n        </entry>\r\n      </file>\r\n    </leaf>\r\n  </component>\r\n  <component name=\"FindInProjectRecents\">\r\n    <findStrings>\r\n      <find>registerationForm</find>\r\n      <find>categories</find>\r\n      <find>peopel</find>\r\n      <find>search</find>\r\n      <find>displaycategory</find>\r\n      <find>displaycate</find>\r\n      <find>displaycategor</find>\r\n      <find>click</find>\r\n      <find>productdescrip</find>\r\n      <find>login</find>\r\n    </findStrings>\r\n    <replaceStrings>\r\n      <replace>registrationForm</replace>\r\n    </replaceStrings>\r\n  </component>\r\n  <component name=\"Git.Settings\">\r\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$\" />\r\n  </component>\r\n  <component name=\"IdeDocumentHistory\">\r\n    <option name=\"CHANGED_PATHS\">\r\n      <list>\r\n        <option value=\"$PROJECT_DIR$/database.py\" />\r\n        <option value=\"$PROJECT_DIR$/templates/login.html\" />\r\n        <option value=\"$PROJECT_DIR$/database.db\" />\r\n        <option value=\"$PROJECT_DIR$/templates/home.html\" />\r\n        <option value=\"$PROJECT_DIR$/templates/cart.html\" />\r\n        <option value=\"$PROJECT_DIR$/templates/displayCategory.html\" />\r\n        <option value=\"$PROJECT_DIR$/templates/editProfile.html\" />\r\n        <option value=\"$PROJECT_DIR$/templates/productDescription.html\" />\r\n        <option value=\"$PROJECT_DIR$/templates/profileHome.html\" />\r\n        <option value=\"$PROJECT_DIR$/README.md\" />\r\n        <option value=\"$PROJECT_DIR$/main.py\" />\r\n      </list>\r\n    </option>\r\n  </component>\r\n  <component name=\"ProjectConfigurationFiles\">\r\n    <option name=\"files\">\r\n      <list>\r\n        <option value=\"$PROJECT_DIR$/.idea/CNA340_FinalProject.iml\" />\r\n        <option value=\"$PROJECT_DIR$/.idea/vcs.xml\" />\r\n        <option value=\"$PROJECT_DIR$/.idea/misc.xml\" />\r\n        <option value=\"$PROJECT_DIR$/.idea/modules.xml\" />\r\n      </list>\r\n    </option>\r\n  </component>\r\n  <component name=\"ProjectFrameBounds\">\r\n    <option name=\"x\" value=\"130\" />\r\n    <option name=\"y\" value=\"196\" />\r\n    <option name=\"width\" value=\"2325\" />\r\n    <option name=\"height\" value=\"1394\" />\r\n  </component>\r\n  <component name=\"ProjectView\">\r\n    <navigator proportions=\"\" version=\"1\">\r\n      <foldersAlwaysOnTop value=\"true\" />\r\n    </navigator>\r\n    <panes>\r\n      <pane id=\"Scope\" />\r\n      <pane id=\"ProjectPane\">\r\n        <subPane>\r\n          <expand>\r\n            <path>\r\n              <item name=\"CNA340_FinalProject\" type=\"b2602c69:ProjectViewProjectNode\" />\r\n              <item name=\"CNA340_FinalProject\" type=\"462c0819:PsiDirectoryNode\" />\r\n            </path>\r\n            <path>\r\n              <item name=\"CNA340_FinalProject\" type=\"b2602c69:ProjectViewProjectNode\" />\r\n              <item name=\"CNA340_FinalProject\" type=\"462c0819:PsiDirectoryNode\" />\r\n              <item name=\"static\" type=\"462c0819:PsiDirectoryNode\" />\r\n            </path>\r\n            <path>\r\n              <item name=\"CNA340_FinalProject\" type=\"b2602c69:ProjectViewProjectNode\" />\r\n              <item name=\"CNA340_FinalProject\" type=\"462c0819:PsiDirectoryNode\" />\r\n              <item name=\"templates\" type=\"462c0819:PsiDirectoryNode\" />\r\n            </path>\r\n          </expand>\r\n          <select />\r\n        </subPane>\r\n      </pane>\r\n      <pane id=\"Scratches\" />\r\n    </panes>\r\n  </component>\r\n  <component name=\"PropertiesComponent\">\r\n    <property name=\"settings.editor.selected.configurable\" value=\"com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable\" />\r\n  </component>\r\n  <component name=\"RunDashboard\">\r\n    <option name=\"ruleStates\">\r\n      <list>\r\n        <RuleState>\r\n          <option name=\"name\" value=\"ConfigurationTypeDashboardGroupingRule\" />\r\n        </RuleState>\r\n        <RuleState>\r\n          <option name=\"name\" value=\"StatusDashboardGroupingRule\" />\r\n        </RuleState>\r\n      </list>\r\n    </option>\r\n  </component>\r\n  <component name=\"RunManager\" selected=\"Python.main\">\r\n    <configuration default=\"true\" type=\"PythonConfigurationType\" factoryName=\"Python\">\r\n      <module name=\"shoppingcart\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration name=\"database\" type=\"PythonConfigurationType\" factoryName=\"Python\" temporary=\"true\">\r\n      <module name=\"CNA340_FinalProject\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"$PROJECT_DIR$\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"true\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"$PROJECT_DIR$/database.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration name=\"main\" type=\"PythonConfigurationType\" factoryName=\"Python\" temporary=\"true\">\r\n      <module name=\"CNA340_FinalProject\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <envs>\r\n        <env name=\"PYTHONUNBUFFERED\" value=\"1\" />\r\n      </envs>\r\n      <option name=\"SDK_HOME\" value=\"C:\\Users\\zrubin\\Documents\\GitHub\\CNA340_FinalProject\\venv\\Scripts\\python.exe\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"$PROJECT_DIR$\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"$PROJECT_DIR$/main.py\" />\r\n      <option name=\"PARAMETERS\" value=\"\" />\r\n      <option name=\"SHOW_COMMAND_LINE\" value=\"false\" />\r\n      <option name=\"EMULATE_TERMINAL\" value=\"false\" />\r\n      <option name=\"MODULE_MODE\" value=\"false\" />\r\n      <option name=\"REDIRECT_INPUT\" value=\"false\" />\r\n      <option name=\"INPUT_FILE\" value=\"\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration default=\"true\" type=\"Tox\" factoryName=\"Tox\">\r\n      <module name=\"shoppingcart\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration default=\"true\" type=\"tests\" factoryName=\"Doctests\">\r\n      <module name=\"shoppingcart\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"SCRIPT_NAME\" value=\"\" />\r\n      <option name=\"CLASS_NAME\" value=\"\" />\r\n      <option name=\"METHOD_NAME\" value=\"\" />\r\n      <option name=\"FOLDER_NAME\" value=\"\" />\r\n      <option name=\"TEST_TYPE\" value=\"TEST_SCRIPT\" />\r\n      <option name=\"PATTERN\" value=\"\" />\r\n      <option name=\"USE_PATTERN\" value=\"false\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <configuration default=\"true\" type=\"tests\" factoryName=\"Unittests\">\r\n      <module name=\"shoppingcart\" />\r\n      <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\r\n      <option name=\"PARENT_ENVS\" value=\"true\" />\r\n      <option name=\"SDK_HOME\" value=\"\" />\r\n      <option name=\"WORKING_DIRECTORY\" value=\"\" />\r\n      <option name=\"IS_MODULE_SDK\" value=\"false\" />\r\n      <option name=\"ADD_CONTENT_ROOTS\" value=\"true\" />\r\n      <option name=\"ADD_SOURCE_ROOTS\" value=\"true\" />\r\n      <EXTENSION ID=\"PythonCoverageRunConfigurationExtension\" runner=\"coverage.py\" />\r\n      <option name=\"_new_additionalArguments\" value=\"&quot;&quot;\" />\r\n      <option name=\"_new_target\" value=\"&quot;.&quot;\" />\r\n      <option name=\"_new_targetType\" value=\"&quot;PATH&quot;\" />\r\n      <method v=\"2\" />\r\n    </configuration>\r\n    <list>\r\n      <item itemvalue=\"Python.main\" />\r\n      <item itemvalue=\"Python.database\" />\r\n    </list>\r\n    <recent_temporary>\r\n      <list>\r\n        <item itemvalue=\"Python.main\" />\r\n        <item itemvalue=\"Python.database\" />\r\n      </list>\r\n    </recent_temporary>\r\n  </component>\r\n  <component name=\"SvnConfiguration\">\r\n    <configuration />\r\n  </component>\r\n  <component name=\"TaskManager\">\r\n    <task active=\"true\" id=\"Default\" summary=\"Default task\">\r\n      <changelist id=\"1c312c6c-ba2c-404d-8718-2e42ffe8499a\" name=\"Default\" comment=\"\" />\r\n      <created>1521184065947</created>\r\n      <option name=\"number\" value=\"Default\" />\r\n      <option name=\"presentableId\" value=\"Default\" />\r\n      <updated>1521184065947</updated>\r\n    </task>\r\n    <servers />\r\n  </component>\r\n  <component name=\"TimeTrackingManager\">\r\n    <option name=\"totallyTimeSpent\" value=\"10977000\" />\r\n  </component>\r\n  <component name=\"ToolWindowManager\">\r\n    <frame x=\"87\" y=\"131\" width=\"1550\" height=\"929\" extended-state=\"0\" />\r\n    <editor active=\"true\" />\r\n    <layout>\r\n      <window_info content_ui=\"combo\" id=\"Project\" order=\"0\" visible=\"true\" weight=\"0.21447721\" />\r\n      <window_info id=\"Structure\" order=\"1\" weight=\"0.25\" />\r\n      <window_info id=\"Favorites\" order=\"2\" side_tool=\"true\" />\r\n      <window_info anchor=\"bottom\" id=\"Message\" order=\"0\" />\r\n      <window_info anchor=\"bottom\" id=\"Find\" order=\"1\" weight=\"0.32998747\" />\r\n      <window_info anchor=\"bottom\" id=\"Debug\" order=\"2\" weight=\"0.39899623\" />\r\n      <window_info anchor=\"bottom\" id=\"Cvs\" order=\"3\" weight=\"0.25\" />\r\n      <window_info anchor=\"bottom\" id=\"Inspection\" order=\"4\" weight=\"0.4\" />\r\n      <window_info active=\"true\" anchor=\"bottom\" id=\"Run\" order=\"5\" visible=\"true\" weight=\"0.30827066\" />\r\n      <window_info anchor=\"bottom\" id=\"TODO\" order=\"6\" />\r\n      <window_info anchor=\"bottom\" id=\"Version Control\" order=\"7\" show_stripe_button=\"false\" />\r\n      <window_info anchor=\"bottom\" id=\"Terminal\" order=\"8\" weight=\"0.3289689\" />\r\n      <window_info anchor=\"bottom\" id=\"Event Log\" order=\"9\" side_tool=\"true\" />\r\n      <window_info anchor=\"bottom\" id=\"Python Console\" order=\"10\" />\r\n      <window_info anchor=\"right\" id=\"Database\" />\r\n      <window_info anchor=\"right\" id=\"Commander\" order=\"0\" weight=\"0.4\" />\r\n      <window_info anchor=\"right\" id=\"Ant Build\" order=\"1\" weight=\"0.25\" />\r\n      <window_info anchor=\"right\" content_ui=\"combo\" id=\"Hierarchy\" order=\"2\" weight=\"0.25\" />\r\n      <window_info anchor=\"right\" id=\"Data View\" order=\"3\" />\r\n    </layout>\r\n  </component>\r\n  <component name=\"com.intellij.coverage.CoverageDataManagerImpl\">\r\n    <SUITE FILE_PATH=\"coverage/CNA340_FinalProject$database.coverage\" NAME=\"database Coverage Results\" MODIFIED=\"1559078076310\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"$PROJECT_DIR$\" />\r\n    <SUITE FILE_PATH=\"coverage/CNA340_FinalProject$main.coverage\" NAME=\"main Coverage Results\" MODIFIED=\"1559078081746\" SOURCE_PROVIDER=\"com.intellij.coverage.DefaultCoverageFileProvider\" RUNNER=\"coverage.py\" COVERAGE_BY_TEST_ENABLED=\"true\" COVERAGE_TRACING_ENABLED=\"false\" WORKING_DIRECTORY=\"$PROJECT_DIR$\" />\r\n  </component>\r\n  <component name=\"editorHistoryManager\">\r\n    <entry file=\"file://$PROJECT_DIR$/templates/checkout.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state>\r\n          <folding />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/static/css/cart.css\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state>\r\n          <folding />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/database.db\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"198\">\r\n          <caret line=\"19\" column=\"14\" lean-forward=\"true\" selection-start-line=\"19\" selection-start-column=\"14\" selection-end-line=\"19\" selection-end-column=\"14\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/../Oniline-book-store-Flask/main.py\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"174\">\r\n          <caret line=\"101\" selection-start-line=\"101\" selection-end-line=\"112\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/add.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\" />\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/cart.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"105\">\r\n          <caret line=\"13\" lean-forward=\"true\" selection-start-line=\"8\" selection-start-column=\"16\" selection-end-line=\"35\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/changePassword.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\" />\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/displayCategory.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"-570\">\r\n          <caret line=\"11\" column=\"8\" selection-start-line=\"11\" selection-start-column=\"8\" selection-end-line=\"11\" selection-end-column=\"8\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/login.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"170\">\r\n          <caret line=\"10\" column=\"20\" selection-start-line=\"10\" selection-start-column=\"20\" selection-end-line=\"10\" selection-end-column=\"20\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/home.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"1343\">\r\n          <caret line=\"79\" column=\"39\" selection-start-line=\"79\" selection-start-column=\"39\" selection-end-line=\"79\" selection-end-column=\"39\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/remove.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\" />\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/editProfile.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"187\">\r\n          <caret line=\"11\" column=\"8\" selection-start-line=\"11\" selection-start-column=\"8\" selection-end-line=\"11\" selection-end-column=\"8\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/register.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\" />\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/profileHome.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"187\">\r\n          <caret line=\"11\" column=\"8\" selection-start-line=\"11\" selection-start-column=\"8\" selection-end-line=\"11\" selection-end-column=\"8\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/database.py\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"187\">\r\n          <caret line=\"25\" column=\"25\" lean-forward=\"true\" selection-start-line=\"25\" selection-start-column=\"25\" selection-end-line=\"25\" selection-end-column=\"25\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/README.md\">\r\n      <provider selected=\"true\" editor-type-id=\"split-provider[text-editor;markdown-preview-editor]\">\r\n        <state split_layout=\"SPLIT\">\r\n          <first_editor relative-caret-position=\"272\">\r\n            <caret line=\"16\" column=\"9\" lean-forward=\"true\" selection-start-line=\"16\" selection-start-column=\"9\" selection-end-line=\"16\" selection-end-column=\"9\" />\r\n          </first_editor>\r\n          <second_editor />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/templates/productDescription.html\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"262\">\r\n          <caret line=\"23\" column=\"16\" lean-forward=\"true\" selection-start-line=\"23\" selection-start-column=\"16\" selection-end-line=\"23\" selection-end-column=\"16\" />\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n    <entry file=\"file://$PROJECT_DIR$/main.py\">\r\n      <provider selected=\"true\" editor-type-id=\"text-editor\">\r\n        <state relative-caret-position=\"362\">\r\n          <caret line=\"262\" column=\"49\" lean-forward=\"true\" selection-start-line=\"262\" selection-start-column=\"49\" selection-end-line=\"262\" selection-end-column=\"49\" />\r\n          <folding>\r\n            <element signature=\"e#0#19#0\" expanded=\"true\" />\r\n          </folding>\r\n        </state>\r\n      </provider>\r\n    </entry>\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ b/.idea/workspace.xml	(date 1623879685131)
+@@ -1,198 +1,47 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <project version="4">
+   <component name="ChangeListManager">
+-    <list default="true" id="1c312c6c-ba2c-404d-8718-2e42ffe8499a" name="Default" comment="">
+-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
++    <list default="true" id="81221f54-0a4d-4c82-a3ef-e609f9824860" name="Default Changelist" comment="">
++      <change afterPath="$PROJECT_DIR$/.idea/CNE310_FinalProject.iml" afterDir="false" />
++      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/CNA340_FinalProject.iml" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/shoppingcart.iml" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
++      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+     </list>
+-    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+     <option name="LAST_RESOLUTION" value="IGNORE" />
+   </component>
+-  <component name="DatabaseView">
+-    <option name="SHOW_INTERMEDIATE" value="true" />
+-    <option name="GROUP_DATA_SOURCES" value="true" />
+-    <option name="GROUP_SCHEMA" value="true" />
+-    <option name="GROUP_CONTENTS" value="false" />
+-    <option name="SORT_POSITIONED" value="false" />
+-    <option name="SHOW_EMPTY_GROUPS" value="false" />
+-    <option name="AUTO_SCROLL_FROM_SOURCE" value="false" />
+-    <option name="HIDDEN_KINDS">
+-      <set />
+-    </option>
+-    <expand />
+-    <select />
+-  </component>
+-  <component name="FileEditorManager">
+-    <leaf>
+-      <file pinned="false" current-in-tab="true">
+-        <entry file="file://$PROJECT_DIR$/main.py">
+-          <provider selected="true" editor-type-id="text-editor">
+-            <state relative-caret-position="362">
+-              <caret line="262" column="49" lean-forward="true" selection-start-line="262" selection-start-column="49" selection-end-line="262" selection-end-column="49" />
+-              <folding>
+-                <element signature="e#0#19#0" expanded="true" />
+-              </folding>
+-            </state>
+-          </provider>
+-        </entry>
+-      </file>
+-      <file pinned="false" current-in-tab="false">
+-        <entry file="file://$PROJECT_DIR$/templates/productDescription.html">
+-          <provider selected="true" editor-type-id="text-editor">
+-            <state relative-caret-position="262">
+-              <caret line="23" column="16" lean-forward="true" selection-start-line="23" selection-start-column="16" selection-end-line="23" selection-end-column="16" />
+-            </state>
+-          </provider>
+-        </entry>
+-      </file>
+-      <file pinned="false" current-in-tab="false">
+-        <entry file="file://$PROJECT_DIR$/README.md">
+-          <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+-            <state split_layout="SPLIT">
+-              <first_editor relative-caret-position="272">
+-                <caret line="16" column="9" lean-forward="true" selection-start-line="16" selection-start-column="9" selection-end-line="16" selection-end-column="9" />
+-              </first_editor>
+-              <second_editor />
+-            </state>
+-          </provider>
+-        </entry>
+-      </file>
+-      <file pinned="false" current-in-tab="false">
+-        <entry file="file://$PROJECT_DIR$/database.py">
+-          <provider selected="true" editor-type-id="text-editor">
+-            <state relative-caret-position="187">
+-              <caret line="25" column="25" lean-forward="true" selection-start-line="25" selection-start-column="25" selection-end-line="25" selection-end-column="25" />
+-            </state>
+-          </provider>
+-        </entry>
+-      </file>
+-    </leaf>
+-  </component>
+-  <component name="FindInProjectRecents">
+-    <findStrings>
+-      <find>registerationForm</find>
+-      <find>categories</find>
+-      <find>peopel</find>
+-      <find>search</find>
+-      <find>displaycategory</find>
+-      <find>displaycate</find>
+-      <find>displaycategor</find>
+-      <find>click</find>
+-      <find>productdescrip</find>
+-      <find>login</find>
+-    </findStrings>
+-    <replaceStrings>
+-      <replace>registrationForm</replace>
+-    </replaceStrings>
+-  </component>
+   <component name="Git.Settings">
+     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+   </component>
+-  <component name="IdeDocumentHistory">
+-    <option name="CHANGED_PATHS">
+-      <list>
+-        <option value="$PROJECT_DIR$/database.py" />
+-        <option value="$PROJECT_DIR$/templates/login.html" />
+-        <option value="$PROJECT_DIR$/database.db" />
+-        <option value="$PROJECT_DIR$/templates/home.html" />
+-        <option value="$PROJECT_DIR$/templates/cart.html" />
+-        <option value="$PROJECT_DIR$/templates/displayCategory.html" />
+-        <option value="$PROJECT_DIR$/templates/editProfile.html" />
+-        <option value="$PROJECT_DIR$/templates/productDescription.html" />
+-        <option value="$PROJECT_DIR$/templates/profileHome.html" />
+-        <option value="$PROJECT_DIR$/README.md" />
+-        <option value="$PROJECT_DIR$/main.py" />
+-      </list>
++  <component name="GithubPullRequestsUISettings">
++    <option name="selectedUrlAndAccountId">
++      <UrlAndAccount>
++        <option name="accountId" value="a86bacaa-71e7-47aa-8b63-26171d06bc90" />
++        <option name="url" value="https://github.com/FisehaTessema4/CNE310_FinalProject.git" />
++      </UrlAndAccount>
+     </option>
+   </component>
+-  <component name="ProjectConfigurationFiles">
+-    <option name="files">
+-      <list>
+-        <option value="$PROJECT_DIR$/.idea/CNA340_FinalProject.iml" />
+-        <option value="$PROJECT_DIR$/.idea/vcs.xml" />
+-        <option value="$PROJECT_DIR$/.idea/misc.xml" />
+-        <option value="$PROJECT_DIR$/.idea/modules.xml" />
+-      </list>
+-    </option>
+-  </component>
+-  <component name="ProjectFrameBounds">
+-    <option name="x" value="130" />
+-    <option name="y" value="196" />
+-    <option name="width" value="2325" />
+-    <option name="height" value="1394" />
+-  </component>
+-  <component name="ProjectView">
+-    <navigator proportions="" version="1">
+-      <foldersAlwaysOnTop value="true" />
+-    </navigator>
+-    <panes>
+-      <pane id="Scope" />
+-      <pane id="ProjectPane">
+-        <subPane>
+-          <expand>
+-            <path>
+-              <item name="CNA340_FinalProject" type="b2602c69:ProjectViewProjectNode" />
+-              <item name="CNA340_FinalProject" type="462c0819:PsiDirectoryNode" />
+-            </path>
+-            <path>
+-              <item name="CNA340_FinalProject" type="b2602c69:ProjectViewProjectNode" />
+-              <item name="CNA340_FinalProject" type="462c0819:PsiDirectoryNode" />
+-              <item name="static" type="462c0819:PsiDirectoryNode" />
+-            </path>
+-            <path>
+-              <item name="CNA340_FinalProject" type="b2602c69:ProjectViewProjectNode" />
+-              <item name="CNA340_FinalProject" type="462c0819:PsiDirectoryNode" />
+-              <item name="templates" type="462c0819:PsiDirectoryNode" />
+-            </path>
+-          </expand>
+-          <select />
+-        </subPane>
+-      </pane>
+-      <pane id="Scratches" />
+-    </panes>
++  <component name="ProjectId" id="1tunSfafDTweXTFEypzmzD9FPIg" />
++  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
++  <component name="ProjectViewState">
++    <option name="hideEmptyMiddlePackages" value="true" />
++    <option name="showLibraryContents" value="true" />
+   </component>
+   <component name="PropertiesComponent">
+-    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+-  </component>
+-  <component name="RunDashboard">
+-    <option name="ruleStates">
+-      <list>
+-        <RuleState>
+-          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
+-        </RuleState>
+-        <RuleState>
+-          <option name="name" value="StatusDashboardGroupingRule" />
+-        </RuleState>
+-      </list>
+-    </option>
++    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
++    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
++    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
++    <property name="last_opened_file_path" value="$PROJECT_DIR$/.." />
+   </component>
+-  <component name="RunManager" selected="Python.main">
+-    <configuration default="true" type="PythonConfigurationType" factoryName="Python">
+-      <module name="shoppingcart" />
+-      <option name="INTERPRETER_OPTIONS" value="" />
+-      <option name="PARENT_ENVS" value="true" />
+-      <envs>
+-        <env name="PYTHONUNBUFFERED" value="1" />
+-      </envs>
+-      <option name="SDK_HOME" value="" />
+-      <option name="WORKING_DIRECTORY" value="" />
+-      <option name="IS_MODULE_SDK" value="false" />
+-      <option name="ADD_CONTENT_ROOTS" value="true" />
+-      <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+-      <option name="SCRIPT_NAME" value="" />
+-      <option name="PARAMETERS" value="" />
+-      <option name="SHOW_COMMAND_LINE" value="false" />
+-      <option name="EMULATE_TERMINAL" value="false" />
+-      <option name="MODULE_MODE" value="false" />
+-      <option name="REDIRECT_INPUT" value="false" />
+-      <option name="INPUT_FILE" value="" />
+-      <method v="2" />
+-    </configuration>
+-    <configuration name="database" type="PythonConfigurationType" factoryName="Python" temporary="true">
+-      <module name="CNA340_FinalProject" />
++  <component name="RunManager">
++    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
++      <module name="CNE310_FinalProject" />
+       <option name="INTERPRETER_OPTIONS" value="" />
+       <option name="PARENT_ENVS" value="true" />
+       <envs>
+@@ -203,29 +52,6 @@
+       <option name="IS_MODULE_SDK" value="true" />
+       <option name="ADD_CONTENT_ROOTS" value="true" />
+       <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+-      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/database.py" />
+-      <option name="PARAMETERS" value="" />
+-      <option name="SHOW_COMMAND_LINE" value="false" />
+-      <option name="EMULATE_TERMINAL" value="false" />
+-      <option name="MODULE_MODE" value="false" />
+-      <option name="REDIRECT_INPUT" value="false" />
+-      <option name="INPUT_FILE" value="" />
+-      <method v="2" />
+-    </configuration>
+-    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true">
+-      <module name="CNA340_FinalProject" />
+-      <option name="INTERPRETER_OPTIONS" value="" />
+-      <option name="PARENT_ENVS" value="true" />
+-      <envs>
+-        <env name="PYTHONUNBUFFERED" value="1" />
+-      </envs>
+-      <option name="SDK_HOME" value="C:\Users\zrubin\Documents\GitHub\CNA340_FinalProject\venv\Scripts\python.exe" />
+-      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+-      <option name="IS_MODULE_SDK" value="false" />
+-      <option name="ADD_CONTENT_ROOTS" value="true" />
+-      <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+       <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+       <option name="PARAMETERS" value="" />
+       <option name="SHOW_COMMAND_LINE" value="false" />
+@@ -235,224 +61,33 @@
+       <option name="INPUT_FILE" value="" />
+       <method v="2" />
+     </configuration>
+-    <configuration default="true" type="Tox" factoryName="Tox">
+-      <module name="shoppingcart" />
+-      <option name="INTERPRETER_OPTIONS" value="" />
+-      <option name="PARENT_ENVS" value="true" />
+-      <option name="SDK_HOME" value="" />
+-      <option name="WORKING_DIRECTORY" value="" />
+-      <option name="IS_MODULE_SDK" value="false" />
+-      <option name="ADD_CONTENT_ROOTS" value="true" />
+-      <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+-      <method v="2" />
+-    </configuration>
+-    <configuration default="true" type="tests" factoryName="Doctests">
+-      <module name="shoppingcart" />
+-      <option name="INTERPRETER_OPTIONS" value="" />
+-      <option name="PARENT_ENVS" value="true" />
+-      <option name="SDK_HOME" value="" />
+-      <option name="WORKING_DIRECTORY" value="" />
+-      <option name="IS_MODULE_SDK" value="false" />
+-      <option name="ADD_CONTENT_ROOTS" value="true" />
+-      <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+-      <option name="SCRIPT_NAME" value="" />
+-      <option name="CLASS_NAME" value="" />
+-      <option name="METHOD_NAME" value="" />
+-      <option name="FOLDER_NAME" value="" />
+-      <option name="TEST_TYPE" value="TEST_SCRIPT" />
+-      <option name="PATTERN" value="" />
+-      <option name="USE_PATTERN" value="false" />
+-      <method v="2" />
+-    </configuration>
+-    <configuration default="true" type="tests" factoryName="Unittests">
+-      <module name="shoppingcart" />
+-      <option name="INTERPRETER_OPTIONS" value="" />
+-      <option name="PARENT_ENVS" value="true" />
+-      <option name="SDK_HOME" value="" />
+-      <option name="WORKING_DIRECTORY" value="" />
+-      <option name="IS_MODULE_SDK" value="false" />
+-      <option name="ADD_CONTENT_ROOTS" value="true" />
+-      <option name="ADD_SOURCE_ROOTS" value="true" />
+-      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+-      <option name="_new_additionalArguments" value="&quot;&quot;" />
+-      <option name="_new_target" value="&quot;.&quot;" />
+-      <option name="_new_targetType" value="&quot;PATH&quot;" />
+-      <method v="2" />
+-    </configuration>
+-    <list>
+-      <item itemvalue="Python.main" />
+-      <item itemvalue="Python.database" />
+-    </list>
+     <recent_temporary>
+       <list>
+         <item itemvalue="Python.main" />
+-        <item itemvalue="Python.database" />
+       </list>
+     </recent_temporary>
+   </component>
+-  <component name="SvnConfiguration">
+-    <configuration />
+-  </component>
++  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+   <component name="TaskManager">
+     <task active="true" id="Default" summary="Default task">
+-      <changelist id="1c312c6c-ba2c-404d-8718-2e42ffe8499a" name="Default" comment="" />
+-      <created>1521184065947</created>
++      <changelist id="81221f54-0a4d-4c82-a3ef-e609f9824860" name="Default Changelist" comment="" />
++      <created>1623627843759</created>
+       <option name="number" value="Default" />
+       <option name="presentableId" value="Default" />
+-      <updated>1521184065947</updated>
++      <updated>1623627843759</updated>
+     </task>
+     <servers />
+   </component>
+-  <component name="TimeTrackingManager">
+-    <option name="totallyTimeSpent" value="10977000" />
+-  </component>
+-  <component name="ToolWindowManager">
+-    <frame x="87" y="131" width="1550" height="929" extended-state="0" />
+-    <editor active="true" />
+-    <layout>
+-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.21447721" />
+-      <window_info id="Structure" order="1" weight="0.25" />
+-      <window_info id="Favorites" order="2" side_tool="true" />
+-      <window_info anchor="bottom" id="Message" order="0" />
+-      <window_info anchor="bottom" id="Find" order="1" weight="0.32998747" />
+-      <window_info anchor="bottom" id="Debug" order="2" weight="0.39899623" />
+-      <window_info anchor="bottom" id="Cvs" order="3" weight="0.25" />
+-      <window_info anchor="bottom" id="Inspection" order="4" weight="0.4" />
+-      <window_info active="true" anchor="bottom" id="Run" order="5" visible="true" weight="0.30827066" />
+-      <window_info anchor="bottom" id="TODO" order="6" />
+-      <window_info anchor="bottom" id="Version Control" order="7" show_stripe_button="false" />
+-      <window_info anchor="bottom" id="Terminal" order="8" weight="0.3289689" />
+-      <window_info anchor="bottom" id="Event Log" order="9" side_tool="true" />
+-      <window_info anchor="bottom" id="Python Console" order="10" />
+-      <window_info anchor="right" id="Database" />
+-      <window_info anchor="right" id="Commander" order="0" weight="0.4" />
+-      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+-      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+-      <window_info anchor="right" id="Data View" order="3" />
+-    </layout>
+-  </component>
+-  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+-    <SUITE FILE_PATH="coverage/CNA340_FinalProject$database.coverage" NAME="database Coverage Results" MODIFIED="1559078076310" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+-    <SUITE FILE_PATH="coverage/CNA340_FinalProject$main.coverage" NAME="main Coverage Results" MODIFIED="1559078081746" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+-  </component>
+-  <component name="editorHistoryManager">
+-    <entry file="file://$PROJECT_DIR$/templates/checkout.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state>
+-          <folding />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/static/css/cart.css">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state>
+-          <folding />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/database.db">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="198">
+-          <caret line="19" column="14" lean-forward="true" selection-start-line="19" selection-start-column="14" selection-end-line="19" selection-end-column="14" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/../Oniline-book-store-Flask/main.py">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="174">
+-          <caret line="101" selection-start-line="101" selection-end-line="112" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/add.html">
+-      <provider selected="true" editor-type-id="text-editor" />
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/cart.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="105">
+-          <caret line="13" lean-forward="true" selection-start-line="8" selection-start-column="16" selection-end-line="35" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/changePassword.html">
+-      <provider selected="true" editor-type-id="text-editor" />
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/displayCategory.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="-570">
+-          <caret line="11" column="8" selection-start-line="11" selection-start-column="8" selection-end-line="11" selection-end-column="8" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/login.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="170">
+-          <caret line="10" column="20" selection-start-line="10" selection-start-column="20" selection-end-line="10" selection-end-column="20" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/home.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="1343">
+-          <caret line="79" column="39" selection-start-line="79" selection-start-column="39" selection-end-line="79" selection-end-column="39" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/remove.html">
+-      <provider selected="true" editor-type-id="text-editor" />
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/editProfile.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="187">
+-          <caret line="11" column="8" selection-start-line="11" selection-start-column="8" selection-end-line="11" selection-end-column="8" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/register.html">
+-      <provider selected="true" editor-type-id="text-editor" />
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/profileHome.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="187">
+-          <caret line="11" column="8" selection-start-line="11" selection-start-column="8" selection-end-line="11" selection-end-column="8" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/database.py">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="187">
+-          <caret line="25" column="25" lean-forward="true" selection-start-line="25" selection-start-column="25" selection-end-line="25" selection-end-column="25" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/README.md">
+-      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
+-        <state split_layout="SPLIT">
+-          <first_editor relative-caret-position="272">
+-            <caret line="16" column="9" lean-forward="true" selection-start-line="16" selection-start-column="9" selection-end-line="16" selection-end-column="9" />
+-          </first_editor>
+-          <second_editor />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/templates/productDescription.html">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="262">
+-          <caret line="23" column="16" lean-forward="true" selection-start-line="23" selection-start-column="16" selection-end-line="23" selection-end-column="16" />
+-        </state>
+-      </provider>
+-    </entry>
+-    <entry file="file://$PROJECT_DIR$/main.py">
+-      <provider selected="true" editor-type-id="text-editor">
+-        <state relative-caret-position="362">
+-          <caret line="262" column="49" lean-forward="true" selection-start-line="262" selection-start-column="49" selection-end-line="262" selection-end-column="49" />
+-          <folding>
+-            <element signature="e#0#19#0" expanded="true" />
+-          </folding>
+-        </state>
+-      </provider>
+-    </entry>
++  <component name="Vcs.Log.Tabs.Properties">
++    <option name="TAB_STATES">
++      <map>
++        <entry key="MAIN">
++          <value>
++            <State />
++          </value>
++        </entry>
++      </map>
++    </option>
++    <option name="oldMeFiltersMigrated" value="true" />
+   </component>
+ </project>
+\ No newline at end of file
+Index: .idea/misc.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"ProjectRootManager\" version=\"2\" project-jdk-name=\"Python 3.7 (CNA340_FinalProject)\" project-jdk-type=\"Python SDK\" />\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/misc.xml b/.idea/misc.xml
+--- a/.idea/misc.xml	(revision 0d60e133b958354ab390b97a8b1cd9951fc79e80)
++++ b/.idea/misc.xml	(date 1623628053710)
+@@ -1,4 +1,4 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <project version="4">
+-  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.7 (CNA340_FinalProject)" project-jdk-type="Python SDK" />
++  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.9 (CNE310_FinalProject)" project-jdk-type="Python SDK" />
+ </project>
+\ No newline at end of file
+Index: .idea/inspectionProfiles/profiles_settings.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/inspectionProfiles/profiles_settings.xml b/.idea/inspectionProfiles/profiles_settings.xml
+new file mode 100644
+--- /dev/null	(date 1623628053793)
++++ b/.idea/inspectionProfiles/profiles_settings.xml	(date 1623628053793)
+@@ -0,0 +1,6 @@
++<component name="InspectionProjectProfileManager">
++  <settings>
++    <option name="USE_PROJECT_PROFILE" value="false" />
++    <version value="1.0" />
++  </settings>
++</component>
+\ No newline at end of file
