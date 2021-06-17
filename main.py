@@ -131,7 +131,7 @@ def change_password():
             cur = conn.cursor()
             cur.execute("SELECT userId, password FROM users WHERE email = '" + session['email'] + "'")
             user_id, password = cur.fetchone()
-            if (password == old_password):
+           if (password == old_password):
                 try:
                     cur.execute("UPDATE users SET password = ? WHERE userId = ?", (new_password, user_id))
                     conn.commit()
@@ -357,4 +357,5 @@ def parse(data):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
 
