@@ -41,8 +41,8 @@ def root():
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        #cur.execute('SELECT categoryId, name FROM categories')
-        #category_data = cur.fetchall()
+        cur.execute('SELECT categoryId, name FROM categories')
+        category_data = cur.fetchall()
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
@@ -93,7 +93,7 @@ def displayCategory():
             "SELECT products.productId, products.name, products.price, products.image, categories.name FROM products, categories WHERE products.categoryId = categories.categoryId AND categories.categoryId = " + category_id)
         data = cur.fetchall()
     conn.close()
-    category_name = data[0][4]
+    category_name = data[0:]
     data = parse(data)
     return render_template('displayCategory.html', data=data, loggedIn=logged_in, firstName=first_name,
                            noOfItems=no_of_items, categoryName=category_name)
@@ -131,7 +131,7 @@ def change_password():
             cur = conn.cursor()
             cur.execute("SELECT userId, password FROM users WHERE email = '" + session['email'] + "'")
             user_id, password = cur.fetchone()
-            if (password == old_password):
+           if (password == old_password):
                 try:
                     cur.execute("UPDATE users SET password = ? WHERE userId = ?", (new_password, user_id))
                     conn.commit()
@@ -176,10 +176,10 @@ def update_profile():
 @app.route("/loginForm")
 def login_form():
     # Uncomment to enable logging in and registration
-    #if 'email' in session:
+    if 'email' in session:
         return redirect(url_for('root'))
-    #else:
-    #    return render_template('login.html', error='')
+    else:
+        return render_template('login.html', error='')
 
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
@@ -357,3 +357,5 @@ def parse(data):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
