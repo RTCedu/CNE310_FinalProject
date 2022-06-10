@@ -12,7 +12,7 @@ The code requires Python and Flask to run at minimum. Pycharm IDE is recommended
 
 ## Running ##
 1. Start the server by running main.py
-2. Navigate to [localhost:5000](http://localhost:5000) or [127.0.0.1:5000](http://127.0.0.1:5000) in your web browser
+2. Navigate to [localhost:5000](http://localhost:5000) or [127.0.0.1:5000](http://127.0.0.1:5000) in your web browser.
 
 ## Thanks
 Thanks to [Zak](https://github.com/RTCedu) for supplying the initial code.
