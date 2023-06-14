@@ -1,4 +1,4 @@
-# Bookstore
+  # Bookstore
 Bookstore is a web application by Alabamazon and is the final project for CNE 310 IT Project Management.
   
 ## Getting Started ##
