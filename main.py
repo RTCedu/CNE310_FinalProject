@@ -178,7 +178,7 @@ def login_form():
     # Uncomment to enable logging in and registration
     if 'email' in session:
         return redirect(url_for('root'))
-    else:
+    #else:
         return render_template('login.html', error='')
 
 @app.route("/login", methods = ['POST', 'GET'])
