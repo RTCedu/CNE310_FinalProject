@@ -1,3 +1,4 @@
 query.py
 venv/
 .idea
+database.db
