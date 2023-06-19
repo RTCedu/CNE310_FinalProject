@@ -77,7 +77,7 @@ def addItem():
                 conn.commit()
                 msg="Added successfully"
             except:
-                msg="Error occured"
+                msg="Error occurred"
                 conn.rollback()
         conn.close()
         print(msg)
@@ -169,7 +169,7 @@ def update_profile():
                     msg = "Saved Successfully"
                 except:
                     con.rollback()
-                    msg = "Error occured"
+                    msg = "Error occurred"
         con.close()
         return redirect(url_for('edit_profile'))
 
@@ -222,7 +222,7 @@ def add_to_cart():
                 msg = "Added successfully"
             except:
                 conn.rollback()
-                msg = "Error occured"
+                msg = "Error occurred"
         conn.close()
         return redirect(url_for('root'))
 
@@ -259,7 +259,7 @@ def remove_from_cart():
             msg = "removed successfully"
         except:
             conn.rollback()
-            msg = "error occured"
+            msg = "error occurred"
     conn.close()
     return redirect(url_for('root'))
 
@@ -330,7 +330,7 @@ def register():
                 msg = "Registered Successfully"
             except:
                 con.rollback()
-                msg = "Error occured"
+                msg = "Error occurred"
         con.close()
         return render_template("login.html", error=msg)
 
