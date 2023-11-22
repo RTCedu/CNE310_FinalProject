@@ -36,13 +36,13 @@ def root():
         # Show last product added
         cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')
         # Show all items
-        #cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')
+        cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1') # hashtag in front of line removed by Tyler Sabin 11/16/2023
         item_data = cur.fetchall()
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        #cur.execute('SELECT categoryId, name FROM categories')
-        #category_data = cur.fetchall()
+        cur.execute('SELECT categoryId, name FROM categories') # hashtag in front of line removed by Tyler Sabin 11/16/2023
+        category_data = cur.fetchall() # hashtag in front of line removed by Tyler Sabin 11/16/2023
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
