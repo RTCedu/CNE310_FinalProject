@@ -251,10 +251,10 @@ def remove_from_cart():
     product_id = int(request.args.get('productId'))
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
-        cur.execute("SELECT user_id FROM users WHERE email = '" + email + "'")
+        cur.execute("SELECT userId FROM users WHERE email = '" + email + "'")
         user_id = cur.fetchone()[0]
         try:
-            cur.execute("DELETE FROM kart WHERE user_id = " + str(user_id) + " AND productId = " + str(product_id))
+            cur.execute("DELETE FROM kart WHERE userId = " + str(user_id) + " AND productId = " + str(product_id))
             conn.commit()
             msg = "removed successfully"
         except:
