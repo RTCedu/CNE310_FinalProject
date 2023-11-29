@@ -21,9 +21,9 @@ def get_login_details():
             no_of_items = 0
         else:
             logged_in = True
-            cur.execute("SELECT user_id, first_name FROM users WHERE email = '" + session['email'] + "'")
+            cur.execute("SELECT userId, firstName FROM users WHERE email = '" + session['email'] + "'")
             user_id, first_name = cur.fetchone()
-            cur.execute("SELECT count(productId) FROM kart WHERE user_id = " + str(user_id))
+            cur.execute("SELECT count(productId) FROM kart WHERE userId = " + str(user_id))
             no_of_items = cur.fetchone()[0]
     conn.close()
     return (logged_in, first_name, no_of_items)
@@ -36,13 +36,13 @@ def root():
         # Show last product added
         cur.execute('SELECT productId, name, price, description, image, stock FROM products ORDER BY productId DESC LIMIT 1 ')
         # Show all items
-        #cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 1')
+        cur.execute('SELECT productId, name, price, description, image, stock FROM products LIMIT 5')
         item_data = cur.fetchall()
         # Show an error instead of the categories
         category_data = [(-1,"Error")]
         # Show all categories
-        #cur.execute('SELECT categoryId, name FROM categories')
-        #category_data = cur.fetchall()
+        cur.execute('SELECT categoryId, name FROM categories')
+        category_data = cur.fetchall()
     item_data = parse(item_data)
     return render_template('home.html', itemData=item_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items, categoryData=category_data)
 
@@ -113,7 +113,7 @@ def edit_profile():
     logged_in, first_name, no_of_items = get_login_details()
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
-        cur.execute("SELECT userId, email, first_name, lastName, address1, address2, zipcode, city, state, country, phone FROM users WHERE email = '" + session['email'] + "'")
+        cur.execute("SELECT userId, email, firstName, lastName, address1, address2, zipcode, city, state, country, phone FROM users WHERE email = '" + session['email'] + "'")
         profile_data = cur.fetchone()
     conn.close()
     return render_template("editProfile.html", profileData=profile_data, loggedIn=logged_in, firstName=first_name, noOfItems=no_of_items)
@@ -176,10 +176,10 @@ def update_profile():
 @app.route("/loginForm")
 def login_form():
     # Uncomment to enable logging in and registration
-    #if 'email' in session:
+    if 'email' in session:
         return redirect(url_for('root'))
-    #else:
-    #    return render_template('login.html', error='')
+    else:
+        return render_template('login.html', error='')
 
 @app.route("/login", methods = ['POST', 'GET'])
 def login():
@@ -251,10 +251,10 @@ def remove_from_cart():
     product_id = int(request.args.get('productId'))
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
-        cur.execute("SELECT user_id FROM users WHERE email = '" + email + "'")
+        cur.execute("SELECT userId FROM users WHERE email = '" + email + "'")
         user_id = cur.fetchone()[0]
         try:
-            cur.execute("DELETE FROM kart WHERE user_id = " + str(user_id) + " AND productId = " + str(product_id))
+            cur.execute("DELETE FROM kart WHERE userId = " + str(user_id) + " AND productId = " + str(product_id))
             conn.commit()
             msg = "removed successfully"
         except:
